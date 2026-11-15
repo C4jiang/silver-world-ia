@@ -730,8 +730,7 @@ function update(s, now) {
     const c = Math.min(sstep(sm.a, sm.a + .38, x), 1 - sstep(sm.b - .42, sm.b, x)); if (c > cover) { cover = c; dark = sm.dark || 0; } }
   SU.uCover.value = cover; SU.uDark.value = dark;
   for (const w of wordEls) { const x = inWin(s, w.a, w.b); const o = x === null ? 0 : win(x, w.a + .28, w.b - .3, .22);
-    w.el.style.opacity = o; w.el.style.color = w.dark ? 'var(--white)' : 'var(--ink)'; w.el.style.transform = `translateY(${(1 - o) * 10}px)`;
-    if (w.full) w.el.querySelector('.n').style.color = 'var(--green)'; }
+    w.el.style.opacity = o; w.el.style.color = w.dark ? 'var(--white)' : 'var(--ink)'; w.el.style.transform = `translateY(${(1 - o) * 10}px)`; }
   // side cues, with leader lines drawn to the room they talk about
   const vis = 1 - cover;
   const W = innerWidth, H = innerHeight;
