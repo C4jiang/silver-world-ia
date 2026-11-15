@@ -45,6 +45,7 @@ canvas { display: block; }
 .hint svg { display: block; animation: nudge 1.6s ease-in-out infinite; }
 @keyframes nudge { 0%, 100% { transform: translateY(3px); } 50% { transform: translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { .hint svg { animation: none; } }
+#vig { position: fixed; inset: 0; pointer-events: none; display: none; background: radial-gradient(ellipse at 50% 50%, transparent 45%, rgba(4,6,18,.38) 100%); }
 #veil { position: fixed; left: 0; right: 0; bottom: 0; height: 42vh; pointer-events: none; opacity: 0;
   background: linear-gradient(to top, rgba(5,8,24,.78), rgba(5,8,24,.35) 55%, rgba(5,8,24,0)); }
 .note p { margin: 0; font-size: clamp(15px, 1.25vw, 19px); line-height: 1.6; font-weight: 600; font-style: italic; }
@@ -111,6 +112,7 @@ canvas { display: block; }
 <div id="section"></div>
 <div id="count">0 / 46</div>
 <div id="flash"></div>
+<div id="vig"></div>
 <canvas id="smoke"></canvas>
 <div id="words"></div>
 
@@ -241,8 +243,13 @@ function inWin(s, a, b) { for (const o of [0, S, -S]) if (s + o >= a && s + o <=
 
 // ---------------------------------------------------------------- renderer + world
 const canvas = document.getElementById('stage');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// the frame goes through the post chain, so the canvas itself needs no antialiasing; phones get a lighter setup
+const LOW = matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 700;
+// phones skip the post chain entirely and draw straight to the (antialiased) canvas; the vignette becomes a CSS layer
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: LOW, powerPreference: 'high-performance' });
+const PR_MAX = Math.min(devicePixelRatio, LOW ? 1.25 : 1.75), PR_MIN = Math.min(PR_MAX, LOW ? .75 : 1);
+let prNow = PR_MAX;
+renderer.setPixelRatio(prNow);
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 const scene = new THREE.Scene();
 const world = new THREE.Group(); scene.add(world);
@@ -465,7 +472,7 @@ const NOISE = /* glsl */`
   float hh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
     return mix(mix(hh(i), hh(i + vec2(1, 0)), f.x), mix(hh(i + vec2(0, 1)), hh(i + vec2(1, 1)), f.x), f.y); }
-  float fbm(vec2 p){ float s = 0., a = .5; for (int i = 0; i < 4; i++) { s += a * vn(p); p = mat2(1.6, 1.2, -1.2, 1.6) * p; a *= .5; } return s; }`;
+  float fbm(vec2 p){ float s = 0., a = .5; for (int i = 0; i < ${LOW ? 2 : 3}; i++) { s += a * vn(p); p = mat2(1.6, 1.2, -1.2, 1.6) * p; a *= .5; } return s; }`;
 // sky: dusk blue at the sea, violet through the climb, deep night with a red (later green) glow under the sphere
 sky.material.uniforms = { uHaze: G.uHaze, uTime: G.uTime, ...A };
 sky.material.fragmentShader = /* glsl */`
@@ -484,10 +491,11 @@ sky.material.fragmentShader = /* glsl */`
     c += vec3(.10,.09,.16) * exp(-pow(y / .05, 2.)) * (.6 + .4 * sin(uTime * .4));
     // drifting contour lines, like weather maps of the charge in the air
     vec2 q = d.xz / (y + .35) * 1.6;
-    float f = fbm(q + vec2(uTime * .018, -uTime * .011)) * 9. + uTime * .05;
-    float iso = abs(fract(f) - .5), w = fwidth(f);
-    float ln = (1. - smoothstep(.0, w * 1.4, iso - .0)) * smoothstep(.02, .14, y) * (1. - smoothstep(.55, .95, y));
-    c = mix(c, vec3(.78,.84,1.), ln * (.07 + .06 * m));
+    if (${LOW ? 'false' : 'true'} && y > .02 && y < .95) {
+      float f = fbm(q + vec2(uTime * .018, -uTime * .011)) * 9. + uTime * .05;
+      float iso = abs(fract(f) - .5), w = fwidth(f);
+      float ln = (1. - smoothstep(.0, w * 1.4, iso)) * smoothstep(.02, .14, y) * (1. - smoothstep(.55, .95, y));
+      c = mix(c, vec3(.78,.84,1.), ln * (.07 + .06 * m)); }
     if (y < 0.0) c = vec3(.90,.94,.98);
     gl_FragColor = vec4(c, 1.); }`;
 sky.material.needsUpdate = true;
@@ -500,9 +508,9 @@ sea.material.fragmentShader = sea.material.fragmentShader
       float rip = fract(r / 46. - uTime * .22);
       float ring = smoothstep(.035, .0, abs(rip - .5) - .0) * exp(-r / 520.) * (.35 + uPulse * 1.2) * step(0., uChargeY);
       c = mix(c, vec3(.45,.58,.86), clamp(ring, 0., 1.) * .45 * fade);
-      float g = fbm(p * .012 + vec2(uTime * .04, 0.));
-      float arc = smoothstep(.012, .0, abs(g - .52)) * step(.72, vn(vec2(floor(uTime * 3.), 1.7) + p * .002));
-      c = mix(c, vec3(.55,.70,1.), arc * .5 * fade);
+      if (${LOW ? 'false' : 'true'} && fade > .01 && vn(vec2(floor(uTime * 3.), 1.7) + p * .002) > .72) {
+        float g = fbm(p * .012 + vec2(uTime * .04, 0.));
+        c = mix(c, vec3(.55,.70,1.), smoothstep(.012, .0, abs(g - .52)) * .5 * fade); }
       c += vec3(.03,.05,.09) * exp(-r / 60.) * clamp(uChargeY / 40., 0., 1.);
       gl_FragColor = vec4(c, 1.); }`);
 sea.material.needsUpdate = true;
@@ -513,11 +521,11 @@ function buildAtmo() {
   const top = META.sphere.z + META.sphere.r;
   // measuring rings round the spine (with tick marks), each draws itself on as the camera rises to it
   const P = [], AP = [], AR = [];
-  const NR = 22;
+  const NR = LOW ? 12 : 22;
   for (let k = 0; k < NR; k++) {
     const y = -2 + (k + .5) / NR * (top + 10), r = 48 + rnd() * 150, tilt = (rnd() - .5) * .22, tdir = rnd() * 6.283;
     const spd = (rnd() < .5 ? -1 : 1) * (.03 + rnd() * .06), kind = Math.floor(rnd() * 3);
-    const N = 200;
+    const N = LOW ? 96 : 200;
     for (let j = 0; j < N; j++) { const a0 = j / N * 6.283, a1 = (j + 1) / N * 6.283;
       P.push(0, 0, 0, 0, 0, 0); AP.push(a0, r, 0, a1, r, 0); AR.push(y, tilt, tdir, spd, y, tilt, tdir, spd); }
     const T = kind === 0 ? 120 : 48;
@@ -600,6 +608,7 @@ function tickWaves(dt) {
 
 // ---------------------------------------------------------------- post: glow on the charged colours only, grade, grain
 const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
+if (LOW) document.getElementById('vig').style.display = 'block';
 const composer = new EffectComposer(renderer, rt);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), .55, .5, .3);
@@ -625,10 +634,11 @@ const gradePass = new ShaderPass({
       float ca = (.0016 + v * .006) * r;
       vec2 dir = c * v * .045;
       vec3 col = vec3(0.);
-      for (int i = 0; i < 6; i++) { float t = float(i) / 5.;
+      int n = v > .05 ? 6 : 1;
+      for (int i = 0; i < 6; i++) { if (i >= n) break; float t = float(i) / 5.;
         vec2 uv = vUv - dir * t;
         col += vec3(texture2D(tDiffuse, uv + c * ca).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - c * ca).b); }
-      col /= 6.;
+      col /= float(n);
       col = clamp(col * uTint, 0., 1.);
       col = mix(col, col * col * (3. - 2. * col), .18);
       col *= mix(1., smoothstep(1.25, .25, r), .42);
@@ -817,6 +827,7 @@ const rail = document.getElementById('rail'), railBtns = LABELS.map((lab, i) => 
   b.onclick = () => { let s = 0; for (let x = 0; x < S; x += .02) if (camAt(x)[0] >= i - .02) { s = x; break; } goTo(s); };
   rail.appendChild(b); return b;
 });
+const veilEl = document.getElementById('veil'); let lastN = -1;
 const countEl = document.getElementById('count'), sectionEl = document.getElementById('section'), flashEl = document.getElementById('flash');
 
 // ---------------------------------------------------------------- input: a virtual scroll that loops both ways (up = climb)
@@ -848,7 +859,7 @@ const Hb = C => {          // where the signal has reached on the spine for char
   const i = Math.floor(C), t = C - i; return lerp(R[Math.max(0, i - 1)].base + (i ? R[i - 1].h : 0), R[i].base + R[i].h * .5, t);
 };
 const phiOf = L => -(174 - 24 * L) * Math.PI / 180;    // the spiral of the rooms around the spine (v28: A0 174°, step -24°)
-let last = performance.now(), lastStrike = 0, shake = 0, sPrev = 0;
+let last = performance.now(), lastStrike = 0, shake = 0, sPrev = 0, perfT = 0, perfN = 0, smokeDirty = true, idleSkip = false;
 const tgt = new THREE.Vector3();
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
@@ -861,8 +872,15 @@ function frame(now) {
   A.uSpin.value += dt * (1 + Math.abs(A.uVel.value) * 6) * (reduce ? 0 : 1);
   tickWaves(dt);
   if (ROOMS.length) update(s, now);
-  composer.render();
-  if (SU.uCover.value > .001) sRenderer.render(sScene, sCam); else sRenderer.clear();
+  // phones: when nothing moves, draw every other frame
+  idleSkip = LOW && Math.abs(A.uVel.value) < .01 && SU.uCover.value < .001 && !idleSkip;
+  if (!idleSkip) { if (LOW) renderer.render(scene, camera); else composer.render(); }
+  if (SU.uCover.value > .001) { sRenderer.render(sScene, sCam); smokeDirty = true; } else if (smokeDirty) { sRenderer.clear(); smokeDirty = false; }
+  // keep the frame rate up: lower the render resolution when frames run long, raise it again when there is room
+  perfT += dt; perfN++;
+  if (perfT > 1.5) { const ms = perfT / perfN * 1000; perfT = perfN = 0;
+    const next = ms > 21 ? Math.max(PR_MIN, prNow * .85) : ms < 15 ? Math.min(PR_MAX, prNow + .1) : prNow;
+    if (Math.abs(next - prNow) > .04) { prNow = next; resize(); } }
   requestAnimationFrame(frame);
 }
 function update(s, now) {
@@ -915,7 +933,7 @@ function update(s, now) {
   // thunder on waking, behind the black smoke
   const th = Math.exp(-Math.pow((s - .35) / .08, 2)) + .6 * Math.exp(-Math.pow((s - .55) / .05, 2));
   fl = Math.max(fl, th * .5);
-  flashEl.style.opacity = reduce ? 0 : fl * (1 - SU.uCover.value * .7);
+  { const fo = reduce ? 0 : fl * (1 - SU.uCover.value * .7); flashEl.style.opacity = fo; flashEl.style.display = fo > .002 ? 'block' : 'none'; }
   SU.uFlash.value = reduce ? 0 : th;
   if (shake > .01 && !reduce) { camera.position.x += (Math.random() - .5) * shake; camera.position.y += (Math.random() - .5) * shake; shake *= .9; }
   camera.fov = fov + Math.min(Math.abs(A.uVel.value), 2) * 2.4; camera.updateProjectionMatrix(); G.uCam.value.copy(camera.position);
@@ -934,10 +952,15 @@ function update(s, now) {
   const fw = new THREE.Vector3(); camera.getWorldDirection(fw); fw.y = 0; fw.normalize();
   const hz = camera.position.clone().addScaledVector(fw, 4000); hz.y = -2.5; hz.project(camera);
   const hy = hz.z < 1 ? (-hz.y * .5 + .5) * H : (camera.position.y > 0 ? 1e9 : -1e9);
+  const rects = new Map();
+  for (const c of cueEls) if (c.on) rects.set(c, c.el.getBoundingClientRect());
   for (const c of cueEls) {
     const o = win(s, c.a, c.b, .3) * vis; const p = clamp((s - c.a) / (c.b - c.a));
+    const on = o > .003; if (on !== c.on) { c.on = on; c.el.style.visibility = on ? 'visible' : 'hidden'; }
+    if (!on && !c.path) continue;
     c.el.style.opacity = o;
-    if (o > .01 && (c.slot === 'left' || c.slot === 'right')) { const rr = c.el.getBoundingClientRect(); c.el.classList.toggle('sea', rr.top + rr.height * .45 > hy); }
+    const rr = rects.get(c);
+    if (o > .01 && rr && (c.slot === 'left' || c.slot === 'right')) c.el.classList.toggle('sea', rr.top + rr.height * .45 > hy);
     const dy = (p - .5) * 46;
     if (c.slot === 'left' || c.slot === 'right') c.el.style.transform = `translateY(calc(-50% + ${dy}px))`;
     else if (c.slot === 'title' || c.slot === 'rules') c.el.style.transform = `translateY(${dy * .6}px)`;
@@ -947,7 +970,7 @@ function update(s, now) {
       if (c.anchor === 16) wp = new THREE.Vector3(0, META.sphere.z, 0);
       else { const r = ROOMS[c.anchor]; wp = new THREE.Vector3(0, r.h * .5, 0).applyMatrix4(r.grp.matrixWorld); }
       const v = wp.project(camera); const ax = (v.x * .5 + .5) * W, ay = (-v.y * .5 + .5) * H;
-      const rc = c.el.getBoundingClientRect();
+      const rc = rr; if (!rc) { c.path.style.opacity = 0; c.dot.style.opacity = 0; continue; }
       const sx = c.slot === 'left' ? rc.right + 18 : rc.left - 18, sy = rc.top + Math.min(26, rc.height / 2);
       const len = Math.hypot(ax - sx, ay - sy) + 40, k = clamp((o - .15) / .7);
       const mx = sx + (c.slot === 'left' ? 40 : -40);
@@ -957,25 +980,25 @@ function update(s, now) {
       c.dot.setAttribute('cx', ax); c.dot.setAttribute('cy', ay); c.dot.setAttribute('fill', onSea ? '#1a2133' : '#eef3fc'); c.dot.style.opacity = k * o;
     }
   }
-  document.getElementById('veil').style.opacity = win(s, 1.5, 3.6, .35) * vis;
+  veilEl.style.opacity = win(s, 1.5, 3.6, .35) * vis;
   // rail, counter, section
   const cur = Math.round(clamp(L, 0, 15));
   railBtns.forEach((b, i) => { b.classList.toggle('on', i === cur && L > -.5 && L < 15.6);
     b.firstChild.classList.toggle('lit', ROOMS[i].U.uLit.value >= .999); });
   rail.style.opacity = clamp(1 - cover * 1.5) * clamp((s - 2.6) * 2) * (s > 28.3 ? 0 : 1);
   let lit = 0, tot = 0; ROOMS.forEach(r => { tot += r.ncap; lit += Math.floor(r.U.uLit.value * r.ncap + 1e-4); });
-  const n = Math.round(lit / tot * 46); countEl.textContent = `${n} / 46`; countEl.classList.toggle('full', n === 46);
+  const n = Math.round(lit / tot * 46); if (n !== lastN) { lastN = n; countEl.textContent = `${n} / 46`; } countEl.classList.toggle('full', n === 46);
   countEl.style.opacity = clamp(1 - cover * 1.5) * clamp((s - 2.6) * 2);
   const sec = SECTIONS.find(([a, b]) => s >= a && s < b);
-  sectionEl.textContent = sec ? sec[2] : ''; sectionEl.style.opacity = sec ? win(s, sec[0], sec[1], .25) * vis : 0;
+  const st = sec ? sec[2] : ''; if (sectionEl.textContent !== st) sectionEl.textContent = st; sectionEl.style.opacity = sec ? win(s, sec[0], sec[1], .25) * vis : 0;
 }
 function resize() {
   const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
-  const pr = renderer.getPixelRatio(); composer.setPixelRatio(pr); composer.setSize(w, h);
-  bloom.setSize(Math.round(w * pr * .5), Math.round(h * pr * .5));
+  renderer.setPixelRatio(prNow); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  const pr = renderer.getPixelRatio();
+  if (!LOW) { composer.setPixelRatio(pr); composer.setSize(w, h); bloom.setSize(Math.round(w * pr * .5), Math.round(h * pr * .5)); }
   gradePass.uniforms.uAspect.value = w / h; gradePass.uniforms.uRes.value.set(w * pr, h * pr);
-  sRenderer.setPixelRatio(.5); sRenderer.setSize(w, h, false); SU.uAspect.value = w / h;
+  sRenderer.setPixelRatio(LOW ? .35 : .5); sRenderer.setSize(w, h, false); SU.uAspect.value = w / h;
 }
 addEventListener('resize', resize); resize();
 function fixCutSides() {
