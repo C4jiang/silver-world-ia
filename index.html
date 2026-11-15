@@ -1,0 +1,801 @@
+<meta charset="utf-8">
+<title>Silver World Spine</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mulish:ital,wght@0,400;0,600;0,700;1,500&family=Noto+Sans+SC:wght@400;500&display=swap">
+<style>
+/* Layout: one fixed 3D stage driven by a virtual scroll (up = climb); thin text layers at the sides,
+   a level rail on the far left, smoke veil + its line on top. Single night/silver look, like v28. */
+:root {
+  --night: #050818;
+  --ink: #1a2133;
+  --paper: #eef0ed;
+  --white: #eef3fc;
+  --soft: #b4c2de;
+  --red: #de4052;
+  --green: #60d678;
+  --pink: #ffb0be;
+  --font: "Avenir Next", "Mulish", "Helvetica Neue", Arial, sans-serif;
+  --zh: "PingFang SC", "Noto Sans SC", "Hiragino Sans GB", sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--night); color: var(--white); font-family: var(--font); overflow: hidden;
+  overscroll-behavior: none; touch-action: none; -webkit-font-smoothing: antialiased; }
+canvas { display: block; }
+#stage, #smoke { position: fixed; inset: 0; width: 100%; height: 100%; }
+#smoke { pointer-events: none; }
+#flash { position: fixed; inset: 0; background: #fffbea; opacity: 0; pointer-events: none; mix-blend-mode: screen; }
+#lines { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.layer { position: fixed; inset: 0; pointer-events: none;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.cue { position: absolute; opacity: 0; will-change: opacity, transform; transition: color .4s; }
+.cue { text-shadow: 0 1px 14px rgba(5,8,24,.9), 0 0 3px rgba(5,8,24,.6); }
+.cue.sea { color: var(--ink); text-shadow: 0 0 12px rgba(238,243,252,.95), 0 0 3px rgba(238,243,252,.9); }
+.motto { text-shadow: 0 1px 14px rgba(5,8,24,.9); }
+.cue.sea .beat p, .cue.sea .hdr, .cue.sea .lead { color: #4a5a7a; }
+.cue.sea .badge { background: var(--ink); color: var(--white); }
+/* title + motto */
+.title { left: max(56px, calc(env(safe-area-inset-left, 0px) + 56px)); top: 9vh; }
+.title h1 { margin: 0; font-weight: 500; font-size: clamp(40px, 6.2vw, 92px); letter-spacing: .01em; line-height: 1; }
+.title p { margin: .7em 0 0; font-style: italic; font-weight: 500; font-size: clamp(15px, 1.5vw, 22px); line-height: 1.45; max-width: 26em; }
+.motto { left: max(56px, calc(env(safe-area-inset-left, 0px) + 56px)); bottom: 7vh; color: var(--white); font-size: clamp(20px, 2.2vw, 32px); letter-spacing: .1em; white-space: nowrap; font-weight: 500; }
+.hint { left: max(56px, calc(env(safe-area-inset-left, 0px) + 56px)); bottom: 7vh; display: flex; align-items: center; gap: 14px; color: var(--white); font-size: 12px; letter-spacing: .32em; font-weight: 700;
+  padding: 10px 18px 10px 14px; border: 1px solid rgba(238,243,252,.55); border-radius: 999px; background: rgba(5,8,24,.55); }
+.hint svg { display: block; animation: nudge 1.6s ease-in-out infinite; }
+@keyframes nudge { 0%, 100% { transform: translateY(3px); } 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .hint svg { animation: none; } }
+#veil { position: fixed; left: 0; right: 0; bottom: 0; height: 42vh; pointer-events: none; opacity: 0;
+  background: linear-gradient(to top, rgba(5,8,24,.78), rgba(5,8,24,.35) 55%, rgba(5,8,24,0)); }
+.note p { margin: 0; font-size: clamp(15px, 1.25vw, 19px); line-height: 1.6; font-weight: 600; font-style: italic; }
+.note .en { font-family: var(--font); margin-top: 10px; color: var(--soft); font-size: 13px; line-height: 1.5; font-weight: 600; }
+/* side slots */
+.left { left: max(96px, calc(env(safe-area-inset-left, 0px) + 96px)); top: 50%; width: min(400px, 31vw); }
+.right { right: max(64px, calc(env(safe-area-inset-right, 0px) + 64px)); top: 50%; width: min(380px, 28vw); }
+.rules-slot, .cue.rules { left: max(96px, calc(env(safe-area-inset-left, 0px) + 96px)); top: 11vh; width: min(440px, 36vw);
+  padding: 22px 24px; border-radius: 8px; background: rgba(5,8,24,.72); box-shadow: 0 0 0 1px rgba(180,194,222,.18); text-shadow: none; }
+.cue.rules.sea { color: var(--white); }
+.cue.rules.sea .hdr { color: var(--soft); }
+.hdr { font-size: 13px; letter-spacing: .32em; font-weight: 700; color: var(--soft); margin: 0 0 18px; }
+.rules { display: grid; gap: 16px; }
+.rule { display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: center; font-size: clamp(14px, 1.15vw, 18px); font-weight: 600; line-height: 1.35; }
+.beat h3 { margin: 0 0 6px; font-size: clamp(18px, 1.7vw, 26px); font-weight: 600; }
+.beat p { margin: 0; color: var(--soft); font-size: clamp(13px, 1.05vw, 16px); line-height: 1.45; font-weight: 600; }
+.mech .row { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+.badge { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 15px;
+  background: var(--white); color: var(--ink); }
+.mech img { width: 100%; border-radius: 3px; display: block; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.mech p { margin: 10px 0 0; font-size: clamp(14px, 1.1vw, 17px); font-weight: 600; line-height: 1.4; }
+.mech .lead { color: var(--soft); font-size: 13px; font-weight: 600; line-height: 1.45; margin: 0 0 14px; }
+/* section label, far right */
+#section { position: fixed; right: max(14px, calc(env(safe-area-inset-right, 0px) + 14px)); top: 50%; transform: translateY(-50%) rotate(180deg);
+  writing-mode: vertical-rl; font-size: 12px; letter-spacing: .4em; font-weight: 700; color: var(--soft); pointer-events: none; }
+#section::after { content: ""; position: absolute; right: -10px; top: 0; width: 2px; height: 100%; background: currentColor; opacity: .55; }
+/* level rail */
+#rail { position: fixed; left: max(14px, calc(env(safe-area-inset-left, 0px) + 14px)); top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column-reverse; gap: 2px; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+#rail button { all: unset; cursor: pointer; display: grid; grid-template-columns: 8px 30px; gap: 8px; align-items: center;
+  color: var(--soft); opacity: .55; padding: 3px 4px; border-radius: 3px; transition: opacity .2s; }
+#rail button:focus-visible { outline: 1px solid var(--white); }
+#rail button.on { opacity: 1; color: var(--white); }
+#rail i { width: 7px; height: 7px; border-radius: 50%; background: var(--red); transition: background .3s, box-shadow .3s; }
+#rail i.lit { background: var(--green); box-shadow: 0 0 8px var(--green); }
+#count { position: fixed; left: max(18px, calc(env(safe-area-inset-left, 0px) + 18px)); bottom: max(18px, calc(env(safe-area-inset-bottom, 0px) + 18px));
+  font-size: 15px; font-weight: 700; letter-spacing: .08em; color: var(--pink); font-variant-numeric: tabular-nums; pointer-events: none; }
+#count.full { color: var(--green); }
+/* smoke words */
+#words { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; text-align: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+#words .w { grid-area: 1 / 1; max-width: min(760px, 86vw); opacity: 0; }
+#words .n { font-size: clamp(30px, 4vw, 56px); letter-spacing: .1em; font-weight: 600; margin-bottom: .5em; font-variant-numeric: tabular-nums; }
+#words .zh { font-family: var(--font); font-size: clamp(18px, 2vw, 28px); line-height: 1.9; white-space: pre-line; font-weight: 500; }
+#words .en { font-size: clamp(13px, 1.1vw, 16px); line-height: 1.6; margin-top: 1.2em; white-space: pre-line; font-weight: 600; opacity: .7; }
+@media (max-width: 760px) {
+  #rail, #section { display: none; }
+  .left { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; top: 27vh; }
+  .right { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; top: 80vh; }
+  .left .mech img { max-width: 260px; }
+  .title { left: max(16px, env(safe-area-inset-left, 0px)); }
+  .motto, .hint { left: max(16px, env(safe-area-inset-left, 0px)); }
+  .cue.rules { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; top: 9vh; }
+  .motto { letter-spacing: .06em; }
+  #lines { display: none; }
+}
+</style>
+
+<canvas id="stage"></canvas>
+<svg id="lines" aria-hidden="true"></svg>
+<div id="veil"></div>
+<div class="layer" id="cues"></div>
+<nav id="rail" aria-label="Levels"></nav>
+<div id="section"></div>
+<div id="count">0 / 46</div>
+<div id="flash"></div>
+<canvas id="smoke"></canvas>
+<div id="words"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+
+// ---------------------------------------------------------------- content (v28 + Localization.xlsx)
+const LABELS = ['0-0','0-1','0-2','1-1','1-2','1-3','2-1','2-2','2-3','3-1','3-2','3-3','3-4','3-5','3-6','END'];
+const MECHS = [[1],[1],[1],[1],[2],[2,3],[3,4],[3,4,5],[6],[5],[6],[2,5,6],[4,6],[2,7],[4,8],[7,8]];
+const CAPS = ['Beam from white floor: red turns green.', 'Glass blocks the beam, but you can walk through.', 'A silver bar passes the charge on.',
+  'Reach out and touch it.', 'On black floor the beam carries nothing.', 'Stand on red, beam green: the floor fills.',
+  'Two hands, two beams. You are the link.', 'The sea is the real power source.'];
+const SMOKE = {
+  wakeZero: { zh: '沉重的雷声搅拌着脑中的嗡鸣，光亮开始出现。你也醒了。', en: 'Heavy thunder churns the hum inside your head, and light begins to appear. You wake too.' },
+  s1: { zh: '链接红色便是你的使命。抬头吧，庞大的红色在上。未来你便会知晓。', en: 'Linking the red is your mission. Look up: the vast red waits above. In time, you will know.' },
+  s2: { zh: '一即是全，全即是一。\n银白色的闪电。\n银白色的海洋。\n银白色的立柱，银白色的地板，银白色的墙壁。\n银白色的自己，银白色的腿脚，银白色的双手。\n银白色的射线。\n\n重新认识你自己，触碰你的本质',
+        en: 'One is all, all is one.\nSilver-white lightning.\nSilver-white sea.\nSilver-white pillars, silver-white floors, silver-white walls.\nSilver-white self, silver-white legs, silver-white hands.\nSilver-white beams.\n\nKnow yourself anew, touch your essence' },
+  s3: { zh: '电子在银白色的金属里漂移，它们可能有意志，也可能无意志。但此刻，它们仍在前行。人类亦是如此。', en: 'Electrons drift through the silver-white metal. They may have a will, or they may not. But right now, they are still moving forward. So are humans.' },
+  s4: { zh: '银色的海洋……沉睡时是死去的柔软金属，\n醒来时是无尽的电荷之海。\n无尽的电荷组成银色之海。', en: 'The silver sea… asleep, it is soft, dead metal.\nAwake, it is an endless sea of charge.\nEndless charges form a silver sea.' },
+  s5: { zh: '抵达此最高处，便已知晓一切。但银色的知识停滞在此，红色的世界还在沉睡。', en: 'To reach this highest place is to know everything. But silver knowledge stops here, and the red world is still asleep.' },
+  wakeFull: { zh: '最后的一丝光亮消散，闪电便融化了旧世界，但新世界醒来了。', en: 'The last trace of light fades. The lightning melts the old world, but a new world wakes.' },
+  ending: { zh: '一个世界毁灭了，但前行的意志永远不灭。', en: 'A world has been destroyed, but the will to move forward never dies.' },
+};
+
+// ---------------------------------------------------------------- the score: everything is a function of s
+const S = 31.2;                                    // one full loop of the journey, in scroll units
+// camera keys: s, level L (0..15 rooms, 16 sphere), distance from the spine, angle offset (deg), elevation, look height, fov, roll, hold
+const CAM = [
+  [0, -1, 150, -40, 4, 70, 38, 0, 1], [1.4, -1, 140, -36, 5, 62, 40, 0], [2.8, -0.5, 104, -26, 7, 40, 42, 0],
+  [3.8, 0, 64, -16, 6, 3, 40, 0], [4.7, 0.7, 60, -12, 8, 0, 40, 0], [5.8, 1, 58, -10, 10, 0, 40, 0],
+  [6.5, 1, 48, 22, 16, -1, 46, 3, 1], [7.2, 1.4, 50, 2, 6, 0, 42, 0], [7.9, 2, 40, -8, -9, 72, 58, -3, 1],
+  [8.6, 3, 60, -10, 4, 2, 42, 0], [9.4, 4, 60, -8, 5, 0, 42, 0], [10.1, 5, 60, -6, 5, 0, 42, 0],
+  [10.9, 5.4, 64, -4, 6, 0, 40, 0, 1], [11.6, 5.8, 62, -4, 6, 0, 40, 0], [12.4, 6.2, 56, 0, 4, 0, 42, 0],
+  [13.4, 7, 66, 24, 18, -1, 46, -4, 1], [14.2, 7.5, 56, 0, 4, 0, 42, 0], [15, 8, 56, -6, 4, 0, 42, 0],
+  [16, 9.3, 70, 50, 0, 2, 54, 7], [17, 11, 72, 120, 6, 0, 52, -4], [17.6, 11.3, 60, 250, 6, 0, 48, 2],
+  [17.9, 11.4, 58, 354, 6, 0, 42, 0, 1], [19, 12, 58, 354, 4, 0, 42, 0], [20, 13, 72, 334, 20, -1, 46, 4, 1],
+  [20.8, 13.4, 56, 352, 4, 0, 42, 0], [21.5, 13.7, 58, 352, 4, 0, 42, 0, 1], [22.2, 14, 56, 352, 4, 0, 42, 0],
+  [23, 14.6, 54, 350, 4, 6, 42, 0], [23.8, 15, 46, 350, 2, 8, 42, 0], [24.6, 15, 44, 356, 2, 8, 42, 0, 1],
+  [25.4, 15, 38, 370, -5, 18, 50, 0], [26.6, 16, 125, 360, -10, 0, 44, 0], [27.6, 16, 72, 384, 0, 0, 52, 2],
+  [28.5, 16, 3, 394, 0, 0, 82, 0], [29.2, 16, 1, 394, 0, 0, 82, 0, 1], [30.2, -1, 150, -40, 4, 70, 38, 0, 1],
+  [31.2, -1, 150, -40, 4, 70, 38, 0, 1]];
+const CHARGE = [[0, 0], [3.0, 0], [3.9, 1], [6.2, 1], [6.9, 2], [7.6, 2], [8.3, 3], [9.0, 4], [9.7, 5], [10.2, 6], [11.6, 6], [12.4, 7],
+  [13.0, 7], [13.7, 8], [14.6, 9], [15.6, 10], [16.4, 11], [17.0, 12], [18.4, 12], [19.0, 13], [19.7, 13], [20.4, 14], [21.6, 14],
+  [22.4, 15], [25.3, 15], [25.9, 16], [26.9, 17], [S, 17]];
+const SPH_TOP = 260;
+const BUILD = [[0, -12], [1.2, -12], [3.2, SPH_TOP + 40], [28.6, SPH_TOP + 40], [29.4, -12], [S, -12]];
+const TWIST = [[0, 0], [15.2, 0], [16.0, .85], [16.8, -.65], [17.4, 0], [S, 0]];
+const SPREAD = [[0, 0], [15.2, 0], [16.2, 6], [17.2, 0], [S, 0]];
+const FLIP = [[0, 1], [11.8, 1], [12.15, -1], [12.45, -1], [12.8, 1], [S, 1]];
+const EXPLODE = { 1: [5.9, 6.5, 7.1], 7: [12.8, 13.4, 14.0], 13: [19.4, 20.0, 20.6] };
+const SMOKES = [
+  { a: -2.8, b: 1.5, dark: 1, lines: [{ a: -2.6, b: -1.6, key: 'wakeFull', n: '46 / 46', full: 1 }, { a: -1.6, b: -.75, key: 'ending' }, { a: -.75, b: 1.2, key: 'wakeZero', n: '0 / 46' }] },
+  { a: 10.2, b: 11.7, lines: [{ a: 10.2, b: 11.7, key: 's2' }] },
+];
+const SECTIONS = [[2.8, 13.0, 'UNDERSTAND'], [13.0, 25.2, 'CLIMB'], [25.2, 28.3, 'TRANSMIT']];
+const ico = {
+  silver: '<svg width="52" height="40" viewBox="0 0 52 40"><rect x="7" y="8" width="10" height="26" rx="4" fill="#e2e8f0" stroke="#22304a" stroke-width="2"/><circle cx="12" cy="6" r="5" fill="#e2e8f0" stroke="#22304a" stroke-width="2"/><path d="M34 12l10 6-10 6-10-6z" fill="#e2e8f0" stroke="#22304a" stroke-width="1.5"/><path d="M24 18v10l10 6V24zM44 18v10l-10 6V24z" fill="#b6bfcc" stroke="#22304a" stroke-width="1.5"/></svg>',
+  sea: '<svg width="52" height="40" viewBox="0 0 52 40"><path d="M4 28l22-10 22 10-22 10z" fill="#c8d8ee" stroke="#3c4c6e" stroke-width="1.5"/><path d="M14 28q3-3 6 0t6 0M24 32q3-3 6 0" fill="none" stroke="#3c4c6e" stroke-width="1.4"/><path d="M33 2l-6 11h4l-4 9 9-12h-4l4-8z" fill="#fff5c8" stroke="#22304a" stroke-width="1.2"/></svg>',
+  redgreen: '<svg width="52" height="40" viewBox="0 0 52 40"><rect x="2" y="12" width="15" height="15" fill="#de4052" stroke="#22304a" stroke-width="1.5"/><path d="M20 20h10" stroke="#eef3fc" stroke-width="2.5"/><path d="M29 15l6 5-6 5z" fill="#eef3fc"/><rect x="36" y="12" width="15" height="15" fill="#60d678" stroke="#22304a" stroke-width="1.5"/></svg>',
+  glass: '<svg width="52" height="40" viewBox="0 0 52 40"><path d="M32 4l10 5v30l-10-5z" fill="rgba(150,200,235,.55)" stroke="#3c5a8c" stroke-width="1.5"/><path d="M4 20h25" stroke="#3c4c6e" stroke-width="6"/><path d="M4 20h25" stroke="#fff" stroke-width="3"/></svg>',
+};
+// cues: [from, to, slot, html, anchor room (or 16 = sphere), anchor side]
+const CUES = [
+  [1.6, 3.5, 'title', '<h1>SILVER WORLD</h1><p>A journey of understanding, handed on to one we will never know, whatever it costs us.</p>'],
+  [1.6, 3.4, 'motto', 'To strive, to seek, to find.'],
+  [3.0, 5.0, 'rules', '<div class="hdr">CORE RULES</div><div class="rules">' +
+    `<div class="rule">${ico.silver}<span>Everything silver-white is a conductor: your whole body, the beam, the floor.</span></div>` +
+    `<div class="rule">${ico.sea}<span>The real power comes from the sea.</span></div>` +
+    `<div class="rule">${ico.redgreen}<span>Red, once powered, turns charged green.</span></div>` +
+    `<div class="rule">${ico.glass}<span>The beam cannot pass through glass.</span></div></div>`],
+  [3.4, 4.7, 'right', beat('Thunder wakes you', '0 / 46 · light begins to appear'), 0],
+  [7.4, 8.6, 'right', beat('Linking the red is your mission', 'look up: the vast red waits above'), 2],
+  [11.8, 13.0, 'right', beat('One is all, all is one', 'know yourself anew, touch your essence, and connect'), 6],
+  [18.6, 19.8, 'right', beat('Everything silver conducts', 'electrons drift through the metal, still moving forward. “So are humans.”'), 12],
+  [22.2, 23.7, 'right', beat('Rising, ever higher', '“Awake, it is an endless sea of charge.”'), 14],
+  [23.9, 25.3, 'left', `<div class="note"><p>${SMOKE.s5.en}</p></div>`, 15],
+  [25.3, 26.5, 'right', beat('You are the missing conductor', 'the sea’s power runs through you into the red sphere, and turns it green'), 15],
+  [26.5, 27.9, 'right', beat('Another world wakes', '46 / 46 becomes 0 / 46 · the end is the first waking'), 16],
+  [5.6, 7.3, 'left', mech(1, '<div class="hdr">HOW THE LEVELS TEACH</div><p class="lead">To let players grasp the core rules step by step, the levels introduce each feature, then turn it around.</p>'), 1],
+  [8.9, 9.7, 'left', mech(2), 4], [9.7, 10.4, 'left', mech(3), 5], [11.7, 12.7, 'left', mech(4), 6], [12.8, 14.2, 'left', mech(5), 7],
+  [14.3, 15.4, 'left', mech(6), 8], [19.3, 20.8, 'left', mech(7), 13], [22.2, 23.6, 'left', mech(8), 14],
+];
+function beat(h, p) { return `<div class="beat"><h3>${h}</h3><p>${p}</p></div>`; }
+function mech(n, lead = '') { return `<div class="mech">${lead}<div class="row"><div class="badge">${n}</div><div><img src="mech-${n}.png" alt="Feature ${n}: ${CAPS[n - 1]}"><p>${CAPS[n - 1]}</p></div></div></div>`; }
+
+// ---------------------------------------------------------------- helpers
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const wrap = s => ((s % S) + S) % S;
+function track(keys, s) {           // piecewise smooth (ease in-out) over [s, v] keys
+  if (s <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) if (s <= keys[i][0]) {
+    const [a, va] = keys[i - 1], [b, vb] = keys[i]; return lerp(va, vb, sstep(a, b, s));
+  }
+  return keys[keys.length - 1][1];
+}
+function camAt(s) {                 // Catmull-Rom through the camera keys; "hold" keys get zero velocity
+  const K = CAM; let i = 1; while (i < K.length - 1 && s > K[i][0]) i++;
+  const k1 = K[i - 1], k2 = K[i], k0 = K[Math.max(0, i - 2)], k3 = K[Math.min(K.length - 1, i + 1)];
+  const t = clamp((s - k1[0]) / (k2[0] - k1[0])), out = [];
+  for (let c = 1; c <= 7; c++) {
+    const p1 = k1[c], p2 = k2[c];
+    let m1 = k1[8] ? 0 : (p2 - k0[c]) / Math.max(1e-3, k2[0] - k0[0]) * (k2[0] - k1[0]);
+    let m2 = k2[8] ? 0 : (k3[c] - p1) / Math.max(1e-3, k3[0] - k1[0]) * (k2[0] - k1[0]);
+    if (c === 1) { const d = p2 - p1; if (d * m1 < 0) m1 = 0; if (d * m2 < 0) m2 = 0; }   // never step back down the spine
+    const t2 = t * t, t3 = t2 * t;
+    out.push((2 * t3 - 3 * t2 + 1) * p1 + (t3 - 2 * t2 + t) * m1 + (-2 * t3 + 3 * t2) * p2 + (t3 - t2) * m2);
+  }
+  return out;
+}
+const win = (s, a, b, f = .3) => Math.min(sstep(a, a + f, s), 1 - sstep(b - f, b, s));
+function inWin(s, a, b) { for (const o of [0, S, -S]) if (s + o >= a && s + o <= b) return s + o; return null; }
+
+// ---------------------------------------------------------------- renderer + world
+const canvas = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const scene = new THREE.Scene();
+const world = new THREE.Group(); scene.add(world);
+const camera = new THREE.PerspectiveCamera(40, 1, .3, 9000);
+
+const G = {   // uniforms shared by every tower material
+  uBuild: { value: -12 }, uBand: { value: 9 }, uTwist: { value: 0 }, uTwistY: { value: 0 }, uTwistW: { value: 34 },
+  uLight: { value: new THREE.Vector3(.55, .75, .38).normalize() }, uCam: { value: new THREE.Vector3() }, uChargeY: { value: -10 },
+  uTime: { value: 0 }, uHaze: { value: new THREE.Color(0.79, 0.84, 0.94) },
+};
+const C = {
+  silver: [[.86, .89, .93], [.62, .66, .72]], dark: [[.27, .26, .25], [.15, .16, .19]], red: [[.86, .25, .33], [.66, .16, .23]],
+  green: [[.38, .86, .52], [.18, .62, .34]], redcol: [[.86, .25, .33], [.66, .16, .23]], pole: [[.95, .96, .99], [.74, .78, .85]], sphere: [[.92, .30, .38], [.72, .18, .27]],
+  sphereG: [[.42, .88, .55], [.22, .64, .38]], ink: [.10, .13, .20], glass: [.50, .66, .86],
+};
+const COMMON = /* glsl */`
+  uniform float uBuild, uBand, uTwist, uTwistY, uTwistW, uChargeY, uTime;
+  uniform vec3 uCam, uLight, uHaze;
+  uniform float uExplode, uLit, uAlt, uRoomH, uRad, uCutOn;
+  uniform vec3 uCutDir; uniform vec2 uHalf;
+  vec3 twist(vec3 w) {
+    float a = uTwist * exp(-pow((w.y - uTwistY) / uTwistW, 2.0));
+    float c = cos(a), s = sin(a); return vec3(c * w.x - s * w.z, w.y, s * w.x + c * w.z);
+  }
+  vec3 cutaway(vec3 p, vec3 part, float order, float kind, float fr) {
+    if (uCutOn <= .001 || order >= 0.0 || kind > .5) return p;
+    float front = smoothstep(.6, .78, fr);               // fr: 0 at the room's far side, 1 at the side facing the camera
+    float wall = smoothstep(.06, .16, part.y / uRoomH);
+    float stag = fract(sin(dot(part.xz, vec2(12.9898, 78.233))) * 43758.5453);
+    float k = smoothstep(0.0, 1.0, clamp(uCutOn * 1.6 - stag * .6, 0.0, 1.0));
+    float c = front * wall * k * (1.0 - smoothstep(0.0, .5, uExplode));
+    p.y = mix(p.y, min(p.y, .04), c);
+    return p;
+  }
+  float pop(float order) { if (order < 0.0) return 0.0; float d = uLit - order; return exp(-pow((d - .05) / .04, 2.0)); }
+  float hazeK(vec3 w) { return smoothstep(380.0, 1600.0, distance(w, uCam)); }
+`;
+const EXPL = `
+  // Opening a room: the walls and ceiling between the camera and the room's core are carried right out of
+  // the frame (up and aside); the rest eases apart a little; the red/green pieces stay put so the change reads.
+  vec3 explodeW(vec3 w, vec3 part, float order) {
+    if (uExplode <= 0.0) return w;
+    vec3 pw = (modelMatrix * vec4(part, 1.0)).xyz;
+    vec3 c = (modelMatrix * vec4(0.0, uRoomH * .5, 0.0, 1.0)).xyz;
+    vec3 tc = uCam - c; tc.y = 0.0; tc = normalize(tc);
+    vec3 sd = vec3(-tc.z, 0.0, tc.x);
+    vec3 rel = pw - c;
+    float front = smoothstep(-.08, .3, dot(rel, tc) / uRad);
+    float roof = smoothstep(.62, .92, part.y / uRoomH);
+    float rem = order >= 0.0 ? 0.0 : max(front, roof);
+    float sgn = dot(rel, sd) >= 0.0 ? 1.0 : -1.0;
+    float e = smoothstep(0.0, 1.0, uExplode);
+    // every room is always cut open on the camera's side: those walls fold to nothing (floors and charge pieces stay)
+    vec3 away = vec3(0.0, 46.0 + 30.0 * roof, 0.0) + sd * sgn * 30.0 + tc * 10.0;
+    vec3 ease = vec3(rel.x * .22, part.y * .35, rel.z * .22) * (order >= 0.0 ? .0 : 1.0);
+    return w + (away * rem + ease * (1.0 - rem)) * e;
+  }
+`;
+const fillMat = (extra = {}) => new THREE.ShaderMaterial({
+  side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+  uniforms: { ...G, uExplode: { value: 0 }, uLit: { value: 0 }, uAlt: { value: 0 }, uRoomH: { value: 1 }, uRad: { value: 1 }, uCutOn: { value: 0 }, uCutDir: { value: new THREE.Vector3(1, 0, 0) }, uHalf: { value: new THREE.Vector2(1, 1) }, ...extra },
+  vertexShader: COMMON + EXPL + `
+    attribute vec3 aLitA, aShadeA, aLitB, aShadeB, aPart; attribute float aOrder, aKind, aFront;
+    varying vec3 vN, vW, vLit, vShade; varying float vPop, vKind;
+    void main() {
+      float pp = pop(aOrder);
+      vec3 p = aPart + (position - aPart) * (1.0 + .55 * pp);
+      p = cutaway(p, aPart, aOrder, 0.0, aFront);
+      vec4 w = modelMatrix * vec4(p, 1.0);
+      w.xyz = twist(explodeW(w.xyz, aPart, aOrder));
+      vN = twist(normalize(mat3(modelMatrix) * normal));
+      float alt = aOrder >= 0.0 ? step(aOrder, uLit) : uAlt;
+      vLit = mix(aLitA, aLitB, alt); vShade = mix(aShadeA, aShadeB, alt);
+      vPop = pp; vKind = aKind; vW = w.xyz;
+      gl_Position = projectionMatrix * viewMatrix * w;
+    }`,
+  fragmentShader: COMMON + `
+    varying vec3 vN, vW, vLit, vShade; varying float vPop, vKind;
+    void main() {
+      if (vW.y > uBuild - uBand * .55) discard;
+      vec3 n = normalize(vN); if (!gl_FrontFacing) n = -n;
+      float d = dot(n, uLight);
+      vec3 c = d > .08 ? vLit : vShade;
+      if (d > .82) c = min(vec3(1.0), c * 1.06 + .02);
+      if (vKind > 1.5 && vKind < 2.5) {           // the spine: signal runs up it, a bright front and a faint trail
+        float front = exp(-pow((vW.y - uChargeY) / 1.6, 2.0));
+        c = mix(c, vec3(.55, .95, .66), .22 * step(vW.y, uChargeY) + .8 * front);
+      }
+      c = mix(c, vec3(.92, 1.0, .94), vPop * .65);
+      c = mix(c, uHaze, hazeK(vW));
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+});
+const lineMat = (extra = {}) => new THREE.ShaderMaterial({
+  uniforms: { ...G, uExplode: { value: 0 }, uLit: { value: 0 }, uAlt: { value: 0 }, uRoomH: { value: 1 }, uRad: { value: 1 }, uCutOn: { value: 0 }, uCutDir: { value: new THREE.Vector3(1, 0, 0) }, uHalf: { value: new THREE.Vector2(1, 1) }, ...extra },
+  vertexShader: COMMON + EXPL + `
+    attribute vec3 aOther, aPart; attribute float aEnd, aDelay, aKind, aOrder, aFront;
+    varying vec3 vW; varying float vKind, vK;
+    vec3 place(vec3 q) {
+      float pp = pop(aOrder);
+      q = aPart + (q - aPart) * (1.0 + .55 * pp);
+      q = cutaway(q, aPart, aOrder, aKind, aFront);
+      vec4 w = modelMatrix * vec4(q, 1.0); return twist(explodeW(w.xyz, aPart, aOrder));
+    }
+    void main() {
+      vec3 a = place(aOther), b = place(position);          // a = segment start (lower end), b = this vertex
+      vec3 start = aEnd > .5 ? a : b;
+      float y0 = (modelMatrix * vec4(aEnd > .5 ? aOther : position, 1.0)).y;
+      float k = clamp((uBuild - y0 - aDelay * uBand) / uBand, 0.0, 1.0);
+      vec3 w = aEnd > .5 ? mix(a, b, k) : b;
+      vW = w; vKind = aKind; vK = k;
+      gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+    }`,
+  fragmentShader: COMMON + `
+    varying vec3 vW; varying float vKind, vK;
+    void main() {
+      if (vK <= 0.0) discard;
+      vec3 c = vKind > .5 ? vec3(${C.glass}) : vec3(${C.ink});
+      if (vKind > 1.5) c = vec3(.96, .97, 1.0);
+      c = mix(c, uHaze, hazeK(vW));
+      gl_FragColor = vec4(c, vKind > 1.5 ? .55 : 1.0);
+    }`,
+  transparent: true, depthWrite: false,
+});
+
+// geometry -> attributes for the shaders (flat normals, colours per role, explode pivot, charge order)
+function toFill(g, role, part, order = -1, kind = 0) {
+  g = g.index ? g.toNonIndexed() : g.clone(); g.computeVertexNormals();
+  const n = g.attributes.position.count;
+  const [la, sa] = C[role] || C.silver, [lb, sb] = (role === 'red' && order >= 0) || role === 'redcol' ? C.green : role === 'sphere' ? C.sphereG : [la, sa];
+  const rep = (v, k = 3) => new THREE.BufferAttribute(new Float32Array(n * k).map((_, i) => v[i % k]), k);
+  g.setAttribute('aLitA', rep(la)); g.setAttribute('aShadeA', rep(sa)); g.setAttribute('aLitB', rep(lb)); g.setAttribute('aShadeB', rep(sb));
+  g.setAttribute('aPart', rep([part.x, part.y, part.z])); g.setAttribute('aOrder', rep([order], 1)); g.setAttribute('aKind', rep([kind], 1));
+  for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'aLitA', 'aShadeA', 'aLitB', 'aShadeB', 'aPart', 'aOrder', 'aKind'].includes(k)) g.deleteAttribute(k);
+  return g;
+}
+function toLines(src, part, order, kind, jitter, angle = 28) {
+  const e = src.isBufferGeometry && src.userData.segments ? src : new THREE.EdgesGeometry(src, angle);
+  const p = e.attributes.position.array, P = [], O = [], E = [], D = [];
+  for (let i = 0; i < p.length; i += 6) {
+    let a = [p[i], p[i + 1], p[i + 2]], b = [p[i + 3], p[i + 4], p[i + 5]];
+    if (a[1] > b[1]) [a, b] = [b, a];
+    const d = jitter();
+    P.push(...a, ...b); O.push(...a, ...a); E.push(0, 1); D.push(d, d);
+  }
+  const g = new THREE.BufferGeometry(), m = P.length / 3;
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('aOther', new THREE.Float32BufferAttribute(O, 3));
+  g.setAttribute('aEnd', new THREE.Float32BufferAttribute(E, 1)); g.setAttribute('aDelay', new THREE.Float32BufferAttribute(D, 1));
+  g.setAttribute('aPart', new THREE.Float32BufferAttribute(new Float32Array(m * 3).map((_, i) => [part.x, part.y, part.z][i % 3]), 3));
+  g.setAttribute('aOrder', new THREE.Float32BufferAttribute(new Float32Array(m).fill(order), 1));
+  g.setAttribute('aKind', new THREE.Float32BufferAttribute(new Float32Array(m).fill(kind), 1));
+  return g;
+}
+function merge(list) {
+  if (!list.length) return null;
+  const keys = Object.keys(list[0].attributes), out = new THREE.BufferGeometry();
+  for (const k of keys) {
+    const size = list[0].attributes[k].itemSize, arr = new Float32Array(list.reduce((n, g) => n + g.attributes[k].array.length, 0));
+    let o = 0; for (const g of list) { arr.set(g.attributes[k].array, o); o += g.attributes[k].array.length; }
+    out.setAttribute(k, new THREE.BufferAttribute(arr, size));
+  }
+  return out;
+}
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+// sky, stars, sea
+const sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 48, 24), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false,
+  uniforms: { uHaze: G.uHaze },
+  vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); gl_Position.z = gl_Position.w; }',
+  fragmentShader: `uniform vec3 uHaze; varying vec3 vP;
+    void main(){ float y = normalize(vP).y; vec3 z1 = vec3(.02,.03,.094), z2 = vec3(.07,.11,.28), z3 = vec3(.59,.65,.84);
+      vec3 c = y > .28 ? mix(z2, z1, smoothstep(.28, .9, y)) : mix(z3, z2, pow(smoothstep(0., .28, y), .6));
+      if (y < 0.0) c = vec3(.90,.94,.98);
+      gl_FragColor = vec4(c, 1.); }`,
+}));
+scene.add(sky);
+{
+  const P = []; for (let i = 0; i < 260; i++) { const th = rnd() * 6.283, y = .12 + Math.pow(rnd(), .7) * .88, r = Math.sqrt(1 - y * y);
+    P.push(Math.cos(th) * r * 4000, y * 4000, Math.sin(th) * r * 4000); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xebf0ff, size: 2, sizeAttenuation: false, transparent: true, opacity: .8, depthWrite: false })));
+  // two linked figures, as in v28
+  for (const [th0, y0] of [[2.2, .55], [3.6, .72]]) {
+    const pts = []; let th = th0, y = y0, hd = rnd() * 6;
+    for (let k = 0; k < 6; k++) { const r = Math.sqrt(1 - y * y); pts.push(new THREE.Vector3(Math.cos(th) * r, y, Math.sin(th) * r).multiplyScalar(3900));
+      hd += (rnd() - .5) * 2.2; th += Math.cos(hd) * .05; y = clamp(y + Math.sin(hd) * .03, .2, .95); }
+    const lg = new THREE.BufferGeometry().setFromPoints(pts);
+    scene.add(new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xc7d6ff, transparent: true, opacity: .45 })));
+  }
+}
+const sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.ShaderMaterial({
+  uniforms: { uCam: G.uCam, uTime: G.uTime, uChargeY: G.uChargeY, uHaze: G.uHaze },
+  vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+  fragmentShader: `uniform vec3 uCam, uHaze; uniform float uTime; varying vec3 vW;
+    float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    void main(){
+      vec2 p = vW.xz; float dist = length(p - uCam.xz);
+      // slanted parallel strokes, broken into short dashes, thinning out with distance
+      vec2 q = mat2(.96, -.28, .28, .96) * p / vec2(9.0, 3.2);
+      q.x += uTime * .15;
+      vec2 cell = floor(q); vec2 f = fract(q);
+      float on = step(.62, h(cell));
+      float wave = abs(f.y - .5 - .12 * sin(f.x * 6.283)) ;
+      float stroke = on * smoothstep(.09, .03, wave) * smoothstep(.0, .15, f.x) * smoothstep(1., .7, f.x);
+      float fade = 1. - smoothstep(60., 900., dist);
+      vec3 c = vec3(.90, .94, .98);
+      c = mix(c, vec3(.47, .56, .71), stroke * .22 * fade);
+      c = mix(c, vec3(.80,.86,.95), smoothstep(700., 3600., dist));
+      gl_FragColor = vec4(c, 1.); }`,
+}));
+sea.rotation.x = -Math.PI / 2; sea.position.y = -2.5; scene.add(sea);
+
+// ---------------------------------------------------------------- tower
+const ROOMS = [];
+let META, sphereFill, sphereLines, lift;
+const sphereU = { uExplode: { value: 0 }, uLit: { value: 0 }, uAlt: { value: 0 } };
+async function build() {
+  META = await (await fetch('tower.json')).json();
+  const bin = Uint8Array.from(atob((await (await fetch('tower-glb.json')).json()).glb), c => c.charCodeAt(0)).buffer;
+  const gltf = await new GLTFLoader().parseAsync(bin, '');
+  gltf.scene.updateMatrixWorld(true);
+  const nodes = {}; gltf.scene.traverse(o => { if (o.name.startsWith('room_')) nodes[o.name.slice(5)] = o; });
+  META.rooms.forEach((r, i) => {
+    const node = nodes[r.label]; const inv = node.matrixWorld.clone().invert();
+    const fills = [], lines = [], caps = [];
+    node.children.forEach(ch => { if (ch.isMesh && /__cap/.test(ch.name)) caps.push(ch); });
+    const cy = m => { m.geometry.computeBoundingBox(); return m.geometry.boundingBox.min.y + m.geometry.boundingBox.max.y; };
+    caps.sort((a, b) => cy(a) - cy(b));
+    node.traverse(ch => {
+      if (!ch.isMesh) return;
+      const role = ch.name.split('__')[1].replace(/[\dx]+$/, '');
+      const g = ch.geometry.clone().applyMatrix4(inv.clone().multiply(ch.matrixWorld));
+      g.computeBoundingBox(); const part = g.boundingBox.getCenter(new THREE.Vector3());
+      const order = role === 'cap' ? (caps.indexOf(ch) + .5) / caps.length : -1;
+      if (role !== 'glass') fills.push(toFill(g, role === 'cap' ? 'red' : role, part, order));
+      lines.push(toLines(g, part, order, role === 'glass' ? 1 : 0, () => rnd() * .6));
+    });
+    const grp = new THREE.Group();
+    node.matrixWorld.decompose(grp.position, grp.quaternion, grp.scale);
+    const U = { uExplode: { value: 0 }, uLit: { value: 0 }, uAlt: { value: 0 }, uCutOn: { value: 0 }, uCutDir: { value: new THREE.Vector3(1, 0, 0) }, uHalf: { value: new THREE.Vector2(Math.max(1, r.w / 2), Math.max(1, r.d / 2)) }, uRoomH: { value: Math.max(1, r.h) }, uRad: { value: Math.max(r.w, r.d) * .5 } };
+    const fm = fillMat(U), lm = lineMat(U);
+    if (fills.length) grp.add(new THREE.Mesh(merge(fills), fm));
+    if (lines.length) grp.add(new THREE.LineSegments(merge(lines), lm));
+    // the arm from the spine to the room
+    if (r.label !== 'END') {
+      const a = r.angle, R0 = META.R0;
+      const ag = new THREE.BoxGeometry(R0, .25, .3);
+      const arm = new THREE.Group(); arm.position.set(R0 / 2 * Math.cos(a), r.pos[2] - .2, -R0 / 2 * Math.sin(a)); arm.rotation.y = a;
+      arm.add(new THREE.Mesh(toFill(ag, 'silver', new THREE.Vector3()), fillMat()));
+      arm.add(new THREE.LineSegments(toLines(ag, new THREE.Vector3(), -1, 0, () => 0), lineMat()));
+      world.add(arm); r.arm = arm;
+    }
+    world.add(grp);
+    ROOMS.push({ ...r, i, grp, U, base: grp.position.y, ncap: caps.length });
+  });
+  // END: the lift and the player, the last conductor
+  {
+    const y = META.rooms[15].pos[2]; lift = new THREE.Group(); lift.position.y = y;
+    const parts = [[new THREE.CylinderGeometry(1.6, 1.6, .2, 40), 0, .1], [new THREE.BoxGeometry(.6, 1.9, .42), 0, 1.25], [new THREE.SphereGeometry(.38, 20, 12), 0, 2.55]];
+    for (const [g, x, yy] of parts) { g.translate(x, yy, 0);
+      lift.add(new THREE.Mesh(toFill(g, 'silver', new THREE.Vector3()), fillMat()));
+      lift.add(new THREE.LineSegments(toLines(g, new THREE.Vector3(), -1, 0, () => 0, 40), lineMat())); }
+    world.add(lift);
+  }
+  // the spine (white pole), the red column, the cap and the sphere
+  const pole = META.pole, rc = META.redcol, sp = META.sphere;
+  const cyl = (r, y0, y1, role, kind, U = {}) => {
+    const g = new THREE.CylinderGeometry(r, r, y1 - y0, 48, 1, true); g.translate(0, (y0 + y1) / 2, 0);
+    const m = new THREE.Mesh(toFill(g, role, new THREE.Vector3(), -1, kind), fillMat(U)); world.add(m);
+    const o = new THREE.Mesh(g, new THREE.ShaderMaterial({ side: THREE.BackSide, uniforms: { uBuild: G.uBuild, uBand: G.uBand },
+      vertexShader: 'varying float vY; void main(){ vec3 p = position + normal * .22; vY = (modelMatrix*vec4(p,1.)).y; gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.); }',
+      fragmentShader: `uniform float uBuild, uBand; varying float vY; void main(){ if (vY > uBuild) discard; gl_FragColor = vec4(${C.ink},1.); }` }));
+    world.add(o); return m;
+  };
+  cyl(pole.r, pole.bottom, pole.top, 'pole', 2);
+  cyl(.9, rc.bottom, rc.top, 'redcol', 0, sphereU);
+  { const g = new THREE.CylinderGeometry(2.4, 2.4, 2.4, 40); g.translate(0, sp.z - sp.r - .2, 0);
+    world.add(new THREE.Mesh(toFill(g, 'silver', new THREE.Vector3()), fillMat()));
+    world.add(new THREE.LineSegments(toLines(g, new THREE.Vector3(), -1, 0, () => 0, 40), lineMat())); }
+  { const g = new THREE.SphereGeometry(sp.r, 96, 48); g.translate(0, sp.z, 0);
+    sphereFill = new THREE.Mesh(toFill(g, 'sphere', new THREE.Vector3(0, sp.z, 0), -1, 3), fillMat(sphereU)); world.add(sphereFill);
+    const o = new THREE.Mesh(g, new THREE.ShaderMaterial({ side: THREE.BackSide, uniforms: { uBuild: G.uBuild },
+      vertexShader: 'varying float vY; void main(){ vec3 p = position + normalize(position - vec3(0.,' + sp.z.toFixed(2) + ',0.)) * .35; vY = p.y; gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.); }',
+      fragmentShader: `uniform float uBuild; varying float vY; void main(){ if (vY > uBuild) discard; gl_FragColor = vec4(${C.ink},1.); }` }));
+    world.add(o);
+    // glints on the glass shell: one family of undulating lines that never cross, drawn on as segments
+    const P = [], R = sp.r * 1.1;
+    for (let k = 1; k < 18; k++) {
+      const v0 = -1 + k * 2 / 18;
+      let prev = null;
+      for (let j = 0; j <= 160; j++) {
+        const th = j / 160 * 6.283;
+        let y = v0 + .022 * Math.sin(th * 2 + k * .7); y = clamp(y, -.98, .98);
+        const r = Math.sqrt(1 - y * y), pt = [Math.cos(th) * r * R, sp.z + y * R, Math.sin(th) * r * R];
+        const gap = Math.sin(th * 2.3 + k * 1.7) + Math.sin(th * 5.1 + k) * .6 > .55;
+        if (prev && !gap) P.push(...prev, ...pt);
+        prev = pt;
+      }
+    }
+    const eg = new THREE.BufferGeometry(); eg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); eg.userData.segments = true;
+    sphereLines = new THREE.LineSegments(toLines(eg, new THREE.Vector3(0, sp.z, 0), -1, 2, () => rnd() * .4), lineMat(sphereU));
+    world.add(sphereLines);
+    // the world inside: a tiny spine over a tiny sea
+    const mp = new THREE.CylinderGeometry(.25, .25, sp.r * .8, 16); mp.translate(0, sp.z - sp.r * .25, 0);
+    world.add(new THREE.Mesh(toFill(mp, 'pole', new THREE.Vector3()), fillMat()));
+    const ms = new THREE.CylinderGeometry(sp.r * .53, sp.r * .53, .05, 64); ms.translate(0, sp.z - sp.r * .66, 0);
+    world.add(new THREE.Mesh(toFill(ms, 'silver', new THREE.Vector3()), fillMat()));
+  }
+  // lightning: fat lines, re-struck every few frames while the window is open
+  for (let k = 0; k < 4; k++) {
+    const m = new LineMaterial({ color: k ? 0xfff6cc : 0xffffff, linewidth: k ? 2.2 : 3.4, transparent: true, opacity: 0, depthTest: false });
+    const l = new Line2(new LineGeometry(), m); l.frustumCulled = false; l.renderOrder = 10; scene.add(l); bolts.push(l);
+  }
+}
+const bolts = [];
+function strike(l, from, to) {
+  let pts = [from.clone(), to.clone()];
+  for (let it = 0; it < 6; it++) {
+    const nx = []; for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1], m = a.clone().lerp(b, .5), L = a.distanceTo(b);
+      m.add(new THREE.Vector3(Math.random() - .5, (Math.random() - .5) * .3, Math.random() - .5).multiplyScalar(L * .45)); nx.push(a, m);
+    } nx.push(pts[pts.length - 1]); pts = nx;
+  }
+  l.geometry.dispose(); l.geometry = new LineGeometry(); l.geometry.setPositions(pts.flatMap(p => [p.x, p.y, p.z]));
+}
+
+// ---------------------------------------------------------------- smoke veil (own shader, after the game's ink smoke look)
+const sCanvas = document.getElementById('smoke');
+const sRenderer = new THREE.WebGLRenderer({ canvas: sCanvas, alpha: true, premultipliedAlpha: false });
+sRenderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const sScene = new THREE.Scene(), sCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const SU = { uTime: { value: 0 }, uCover: { value: 0 }, uDark: { value: 0 }, uAspect: { value: 1 }, uFlash: { value: 0 } };
+sScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: SU, transparent: true,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+  fragmentShader: `uniform float uTime, uCover, uDark, uAspect, uFlash; varying vec2 vUv;
+    float hash(vec3 p){ p = fract(p * .3183099 + .1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+    float noise(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3. - 2. * f);
+      return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                 mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z); }
+    float fbm(vec3 p){ float s = 0., a = .5; for (int i = 0; i < 4; i++){ s += a * noise(p); p = p * 2.03 + vec3(1.7, 9.2, 3.1); a *= .5; } return s / .9375; }
+    void main(){
+      float t = uTime;
+      vec2 uv = (vUv - .5) * vec2(uAspect, 1.);
+      float an = t * .025 + length(uv) * .5; uv = mat2(cos(an), -sin(an), sin(an), cos(an)) * uv;
+      vec3 p = vec3(uv * 2.4, t * .02) + vec3(0., -t * .045, 0.);
+      vec3 q = vec3(fbm(p), fbm(p + vec3(5.2, 1.3, 2.8)), fbm(p + vec3(1.1, 7.7, 4.4)));
+      vec2 r = vec2(fbm(p + 2.2 * q + vec3(1.7, 9.2, t * .04)), fbm(p + 2.2 * q + vec3(8.3, 2.8, -t * .03)));
+      float body = fbm(p * 1.15 + 1.8 * vec3(r, q.z));
+      float plume = smoothstep(.45, .62, body);
+      float f = fbm(p * 1.6 + 2.6 * q + vec3(4.1, t * .05, 7.3));
+      float strands = exp(-pow((f - .5) * 22., 2.)) + .7 * exp(-pow((f - .4) * 30., 2.));
+      float rim = smoothstep(.28, .44, body) * (1. - smoothstep(.56, .7, body));
+      float dens = clamp(plume + strands * rim * .8 + smoothstep(.3, .52, body) * .28, 0., 1.);
+      float core = smoothstep(.55, .75, body) * (.5 + .5 * q.x);
+      float quiet = 1. - smoothstep(.18, .62, length(uv * vec2(.62, 1.25)));
+      float ink = dens * (1. - quiet * .95);
+      vec3 paper = mix(vec3(.933, .941, .929), vec3(.03, .035, .055), uDark);
+      vec3 smoke = mix(mix(vec3(.24, .27, .29), vec3(.06, .07, .085), core), mix(vec3(.30, .33, .40), vec3(.55, .58, .66), core), uDark);
+      vec3 c = mix(paper, smoke, clamp(ink * 1.15, 0., 1.));
+      c = mix(c, vec3(1., .98, .9), uFlash * (.35 + .65 * dens));
+      float edge = smoothstep(body - .12, body + .12, uCover * 1.35);
+      float a = mix(edge, 1., smoothstep(.85, 1., uCover)) * clamp(uCover * 8., 0., 1.);
+      gl_FragColor = vec4(c, a);
+    }`,
+})));
+
+// ---------------------------------------------------------------- page layers
+const cuesEl = document.getElementById('cues'), svg = document.getElementById('lines');
+const cueEls = CUES.map(([a, b, slot, html, anchor]) => {
+  const el = document.createElement('div'); el.className = `cue ${slot}`; el.innerHTML = html; cuesEl.appendChild(el);
+  let path = null, dot = null;
+  if (anchor !== undefined) {
+    path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('fill', 'none'); path.setAttribute('stroke-width', '1.4');
+    dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); dot.setAttribute('r', '3.5');
+    svg.append(path, dot);
+  }
+  return { a, b, slot, el, anchor, path, dot };
+});
+const wordsEl = document.getElementById('words');
+const wordEls = [];
+SMOKES.forEach(sm => sm.lines.forEach(l => {
+  const el = document.createElement('div'); el.className = 'w';
+  el.innerHTML = (l.n ? `<div class="n">${l.n}</div>` : '') + `<div class="zh">${SMOKE[l.key].en}</div>`;
+  wordsEl.appendChild(el); wordEls.push({ ...l, dark: sm.dark, el });
+}));
+const rail = document.getElementById('rail'), railBtns = LABELS.map((lab, i) => {
+  const b = document.createElement('button'); b.innerHTML = `<i></i><span>${lab}</span>`; b.setAttribute('aria-label', `Go to level ${lab}`);
+  b.onclick = () => { let s = 0; for (let x = 0; x < S; x += .02) if (camAt(x)[0] >= i - .02) { s = x; break; } goTo(s); };
+  rail.appendChild(b); return b;
+});
+const countEl = document.getElementById('count'), sectionEl = document.getElementById('section'), flashEl = document.getElementById('flash');
+
+// ---------------------------------------------------------------- input: a virtual scroll that loops both ways (up = climb)
+let sT = 0, sC = 0, intro = true;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const push = d => { intro = false; sT += d; };
+function goTo(s) { intro = false; const cur = wrap(sC); let d = s - cur; if (d > S / 2) d -= S; if (d < -S / 2) d += S; sT = sC + d; }
+addEventListener('wheel', e => { e.preventDefault(); const k = e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? innerHeight : 1; push(e.deltaY * k * .0011); }, { passive: false });
+let ty = null;
+addEventListener('touchstart', e => { ty = e.touches[0].clientY; }, { passive: true });
+addEventListener('touchmove', e => { if (ty === null) return; const y = e.touches[0].clientY; push((ty - y) * .0042); ty = y; }, { passive: true });
+addEventListener('touchend', () => { ty = null; });
+addEventListener('keydown', e => {
+  const m = { ArrowDown: .35, PageDown: 1.2, ArrowUp: -.35, PageUp: -1.2, ' ': 1.2 }[e.key];
+  if (m !== undefined) { e.preventDefault(); push(e.shiftKey ? -m : m); }
+});
+
+// ---------------------------------------------------------------- per-frame evaluation
+const Hc = L => {          // height of the spine at level L (room centres, then the sphere)
+  const R = ROOMS; if (!R.length) return 0;
+  if (L <= 0) return lerp(4, R[0].base + R[0].h / 2, clamp(L + 1));
+  if (L >= 15) return lerp(R[15].base + 1.5, META.sphere.z, clamp(L - 15));
+  const i = Math.floor(L), t = L - i; return lerp(R[i].base + R[i].h / 2, R[i + 1].base + R[i + 1].h / 2, t);
+};
+const Hb = C => {          // where the signal has reached on the spine for charge C
+  const R = ROOMS; if (C <= 0) return -10;
+  if (C >= 16) return lerp(META.redcol.bottom, META.sphere.z, clamp(C - 16));
+  if (C >= 15) return lerp(R[15].base, META.redcol.bottom, C - 15);
+  const i = Math.floor(C), t = C - i; return lerp(R[Math.max(0, i - 1)].base + (i ? R[i - 1].h : 0), R[i].base + R[i].h * .5, t);
+};
+const phiOf = L => -(174 - 24 * L) * Math.PI / 180;    // the spiral of the rooms around the spine (v28: A0 174°, step -24°)
+let last = performance.now(), lastStrike = 0, shake = 0;
+const tgt = new THREE.Vector3();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  G.uTime.value = SU.uTime.value = now / 1000;
+  if (intro && sT < 2.0) sT = Math.min(2.0, sT + dt * .42);
+  sC += (sT - sC) * (1 - Math.exp(-dt * (reduce ? 9 : 3.6)));
+  const s = wrap(sC);
+  if (ROOMS.length) update(s, now);
+  renderer.render(scene, camera);
+  if (SU.uCover.value > .001) sRenderer.render(sScene, sCam); else sRenderer.clear();
+  requestAnimationFrame(frame);
+}
+function update(s, now) {
+  const [L, dist, ang, elev, look, fov, roll] = camAt(s);
+  const C = track(CHARGE, s);
+  // the spine breathes: rooms spread apart around the camera during the fast climb
+  const sp = track(SPREAD, s);
+  ROOMS.forEach(r => {
+    const off = sp * clamp(r.i - L, -3, 3);
+    r.grp.position.y = r.base + off; if (r.arm) r.arm.position.y = r.base - .2 + off;
+    const e = EXPLODE[r.i]; r.U.uExplode.value = e ? Math.max(0, Math.min(sstep(e[0], e[1], s), 1 - sstep(e[1] + .1, e[2], s))) * 1.0 : 0;
+    r.U.uLit.value = clamp(C - r.i);
+    r.U.uCutOn.value = 1 - sstep(1.05, 1.9, Math.abs(r.i - L));   // a room opens only as the camera reaches it
+  });
+  sphereU.uAlt.value = clamp(C - 16);
+  G.uChargeY.value = Hb(C);
+  G.uBuild.value = track(BUILD, s);
+  G.uTwist.value = reduce ? 0 : track(TWIST, s);
+  world.scale.x = reduce ? 1 : track(FLIP, s);
+  // camera on its orbit around the spine
+  const aspK = camera.aspect < 1 ? 1 + (1 - camera.aspect) * 1.1 : 1; const distA = dist * aspK;
+  const h = Hc(L), phi = phiOf(clamp(L, -1, 16)) + ang * Math.PI / 180;
+  const low = clamp(15.4 - L) * clamp(L + 1.2);          // a low camera looking up: the night stays behind the rooms
+  camera.position.set(Math.cos(phi) * distA, Math.max(2, h + elev - 5 * low), Math.sin(phi) * distA);
+  const roomPhi = phiOf(clamp(L, -1, 15));
+  tgt.set(Math.cos(roomPhi) * Math.min(12, dist * .2), h + look + 3 * low, Math.sin(roomPhi) * Math.min(12, dist * .2));
+  if (L > 15) tgt.lerp(new THREE.Vector3(0, META.sphere.z, 0), clamp(L - 15));
+  if (dist < 6) tgt.set(0, META.sphere.z - META.sphere.r * .4, 0);
+  camera.up.set(0, 1, 0); camera.lookAt(tgt);
+  camera.rotateZ(roll * Math.PI / 180);
+  // lightning: the old world's end
+  const lw = win(s, 27.0, 28.6, .15);
+  let fl = 0;
+  if (lw > 0) {
+    if (now - lastStrike > 90) { lastStrike = now;
+      const top = new THREE.Vector3(0, META.sphere.z + 900, 0);
+      bolts.forEach((b, k) => { const a = Math.random() * 6.28, r = 60 + Math.random() * 260;
+        strike(b, new THREE.Vector3(Math.cos(a) * r, top.y - Math.random() * 300, Math.sin(a) * r),
+          k === 3 ? new THREE.Vector3(0, ROOMS[15].base + 2, 0) : new THREE.Vector3(Math.cos(a) * 18, META.sphere.z + 10 + Math.random() * 10, Math.sin(a) * 18)); }); }
+    const strobe = (Math.sin(now * .05) > .2 ? 1 : .25) * lw;
+    bolts.forEach(b => { b.material.opacity = strobe; b.material.resolution.set(innerWidth, innerHeight); });
+    fl = Math.max(fl, strobe * .55); shake = .9 * lw;
+  } else bolts.forEach(b => b.material.opacity = 0);
+  // thunder on waking, behind the black smoke
+  const th = Math.exp(-Math.pow((s - .35) / .08, 2)) + .6 * Math.exp(-Math.pow((s - .55) / .05, 2));
+  fl = Math.max(fl, th * .5);
+  flashEl.style.opacity = reduce ? 0 : fl * (1 - SU.uCover.value * .7);
+  SU.uFlash.value = reduce ? 0 : th;
+  if (shake > .01 && !reduce) { camera.position.x += (Math.random() - .5) * shake; camera.position.y += (Math.random() - .5) * shake; shake *= .9; }
+  camera.fov = fov; camera.updateProjectionMatrix(); G.uCam.value.copy(camera.position);
+  G.uTwistY.value = h;
+  // smoke
+  let cover = 0, dark = 0;
+  for (const sm of SMOKES) { const x = inWin(s, sm.a, sm.b); if (x === null) continue;
+    const c = Math.min(sstep(sm.a, sm.a + .38, x), 1 - sstep(sm.b - .42, sm.b, x)); if (c > cover) { cover = c; dark = sm.dark || 0; } }
+  SU.uCover.value = cover; SU.uDark.value = dark;
+  for (const w of wordEls) { const x = inWin(s, w.a, w.b); const o = x === null ? 0 : win(x, w.a + .28, w.b - .3, .22);
+    w.el.style.opacity = o; w.el.style.color = w.dark ? 'var(--white)' : 'var(--ink)'; w.el.style.transform = `translateY(${(1 - o) * 10}px)`;
+    if (w.full) w.el.querySelector('.n').style.color = 'var(--green)'; }
+  // side cues, with leader lines drawn to the room they talk about
+  const vis = 1 - cover;
+  const W = innerWidth, H = innerHeight;
+  const fw = new THREE.Vector3(); camera.getWorldDirection(fw); fw.y = 0; fw.normalize();
+  const hz = camera.position.clone().addScaledVector(fw, 4000); hz.y = -2.5; hz.project(camera);
+  const hy = hz.z < 1 ? (-hz.y * .5 + .5) * H : (camera.position.y > 0 ? 1e9 : -1e9);
+  for (const c of cueEls) {
+    const o = win(s, c.a, c.b, .3) * vis; const p = clamp((s - c.a) / (c.b - c.a));
+    c.el.style.opacity = o;
+    if (o > .01 && (c.slot === 'left' || c.slot === 'right')) { const rr = c.el.getBoundingClientRect(); c.el.classList.toggle('sea', rr.top + rr.height * .45 > hy); }
+    const dy = (p - .5) * 46;
+    if (c.slot === 'left' || c.slot === 'right') c.el.style.transform = `translateY(calc(-50% + ${dy}px))`;
+    else if (c.slot === 'title' || c.slot === 'rules') c.el.style.transform = `translateY(${dy * .6}px)`;
+    if (c.path) {
+      if (o < .02) { c.path.style.opacity = 0; c.dot.style.opacity = 0; continue; }
+      let wp;
+      if (c.anchor === 16) wp = new THREE.Vector3(0, META.sphere.z, 0);
+      else { const r = ROOMS[c.anchor]; wp = new THREE.Vector3(0, r.h * .5, 0).applyMatrix4(r.grp.matrixWorld); }
+      const v = wp.project(camera); const ax = (v.x * .5 + .5) * W, ay = (-v.y * .5 + .5) * H;
+      const rc = c.el.getBoundingClientRect();
+      const sx = c.slot === 'left' ? rc.right + 18 : rc.left - 18, sy = rc.top + Math.min(26, rc.height / 2);
+      const len = Math.hypot(ax - sx, ay - sy) + 40, k = clamp((o - .15) / .7);
+      const mx = sx + (c.slot === 'left' ? 40 : -40);
+      c.path.setAttribute('d', `M${sx},${sy} L${mx},${sy} L${ax},${ay}`);
+      const onSea = c.el.classList.contains('sea'); c.path.setAttribute('stroke', onSea ? 'rgba(40,52,80,.6)' : 'rgba(230,236,255,.7)');
+      c.path.style.strokeDasharray = `${len}`; c.path.style.strokeDashoffset = `${len * (1 - k)}`; c.path.style.opacity = o;
+      c.dot.setAttribute('cx', ax); c.dot.setAttribute('cy', ay); c.dot.setAttribute('fill', onSea ? '#1a2133' : '#eef3fc'); c.dot.style.opacity = k * o;
+    }
+  }
+  document.getElementById('veil').style.opacity = win(s, 1.5, 3.6, .35) * vis;
+  // rail, counter, section
+  const cur = Math.round(clamp(L, 0, 15));
+  railBtns.forEach((b, i) => { b.classList.toggle('on', i === cur && L > -.5 && L < 15.6);
+    b.firstChild.classList.toggle('lit', ROOMS[i].U.uLit.value >= .999); });
+  rail.style.opacity = clamp(1 - cover * 1.5) * clamp((s - 2.6) * 2) * (s > 28.3 ? 0 : 1);
+  let lit = 0, tot = 0; ROOMS.forEach(r => { tot += r.ncap; lit += Math.floor(r.U.uLit.value * r.ncap + 1e-4); });
+  const n = Math.round(lit / tot * 46); countEl.textContent = `${n} / 46`; countEl.classList.toggle('full', n === 46);
+  countEl.style.opacity = clamp(1 - cover * 1.5) * clamp((s - 2.6) * 2);
+  const sec = SECTIONS.find(([a, b]) => s >= a && s < b);
+  sectionEl.textContent = sec ? sec[2] : ''; sectionEl.style.opacity = sec ? win(s, sec[0], sec[1], .25) * vis : 0;
+}
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  sRenderer.setPixelRatio(.5); sRenderer.setSize(w, h, false); SU.uAspect.value = w / h;
+}
+addEventListener('resize', resize); resize();
+function fixCutSides() {
+  ROOMS.forEach(r => {
+    let best = 0, bd = 1e9;
+    for (let x = 2.8; x < 27; x += .02) { const L = camAt(x)[0], d = Math.abs(L - r.i); if (d < bd - 1e-3) { bd = d; best = x; } }
+    const [L, dist, ang] = camAt(best);
+    const phi = phiOf(clamp(L, -1, 16)) + ang * Math.PI / 180;
+    const cam = new THREE.Vector3(Math.cos(phi) * dist, 0, Math.sin(phi) * dist);
+    const dir = cam.sub(new THREE.Vector3(r.grp.position.x, 0, r.grp.position.z)); dir.y = 0; dir.normalize();
+    const d = r.U.uCutDir.value.copy(dir.applyQuaternion(r.grp.quaternion.clone().invert())).setY(0).normalize();
+    // where each piece sits between the room's far side (0) and the side the camera arrives at (1)
+    const meshes = r.grp.children.filter(o => o.geometry && o.geometry.attributes.aPart);
+    let lo = 1e9, hi = -1e9;
+    meshes.forEach(m => { const a = m.geometry.attributes.aPart.array; for (let k = 0; k < a.length; k += 3) { const v = a[k] * d.x + a[k + 2] * d.z; lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+    meshes.forEach(m => { const a = m.geometry.attributes.aPart.array, f = new Float32Array(a.length / 3);
+      for (let k = 0; k < f.length; k++) f[k] = (a[k * 3] * d.x + a[k * 3 + 2] * d.z - lo) / Math.max(1e-3, hi - lo);
+      m.geometry.setAttribute('aFront', new THREE.BufferAttribute(f, 1)); });
+  });
+}
+build().then(() => { fixCutSides(); requestAnimationFrame(frame); }).catch(e => { console.error(e); document.body.insertAdjacentHTML('beforeend', `<p style="position:fixed;left:20px;top:20px">The tower could not load: ${e.message}</p>`); });
+</script>
