@@ -1,8 +1,7 @@
 <meta charset="utf-8">
 <title>Silver World Spine</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mulish:ital,wght@0,400;0,600;0,700;1,500&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
 /* Layout: one fixed 3D stage driven by a virtual scroll (up = climb); thin text layers at the sides,
    a level rail on the far left, smoke veil + its line on top. Single night/silver look, like v28. */
@@ -118,8 +117,8 @@ canvas { display: block; }
 
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
 } }
 </script>
 <script type="module">
